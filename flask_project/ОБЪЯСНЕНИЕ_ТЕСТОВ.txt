@@ -1,0 +1,684 @@
+================================================================================
+                    ОБЪЯСНЕНИЕ ТЕСТОВ ДЛЯ ПРОЕКТА FLASK/FASTAPI
+================================================================================
+
+ЗАЧЕМ НУЖНЫ ТЕСТЫ?
+------------------
+Тесты - это автоматизированные проверки, которые убеждаются, что код работает
+правильно. Они помогают:
+1. Находить ошибки до того, как их обнаружат пользователи
+2. Убеждаться, что изменения не сломали существующий функционал
+3. Документировать, как должен работать код
+4. Упрощать рефакторинг (изменение кода без изменения поведения)
+
+В этом проекте тесты проверяют:
+- Правильность работы API endpoints
+- Корректность генерации UUID для фильмов
+- Работу HTML форм и страниц
+- Обработку ошибок (например, когда фильм не найден)
+
+================================================================================
+                        ПОСТРОЧНОЕ ОБЪЯСНЕНИЕ КОДА
+================================================================================
+
+СТРОКИ 1-7: Импорты и настройка тестового клиента
+--------------------------------------------------
+
+1| import pytest
+   Импортируем библиотеку pytest - это фреймворк для написания и запуска тестов
+
+2| from fastapi.testclient import TestClient
+   Импортируем TestClient - это специальный клиент для тестирования FastAPI
+   приложений. Он позволяет отправлять HTTP запросы к приложению без
+   запуска реального сервера
+
+3| from main import app, movies_db, Movie
+   Импортируем из основного файла:
+   - app: экземпляр FastAPI приложения
+   - movies_db: список фильмов (база данных в памяти)
+   - Movie: модель данных для фильма
+
+4| import uuid
+   Импортируем модуль для работы с UUID (уникальными идентификаторами)
+
+6| # Создаем тестовый клиент
+7| client = TestClient(app)
+   Создаем тестовый клиент, который будет использоваться во всех тестах
+   для отправки запросов к нашему приложению
+
+
+СТРОКИ 9-15: Фикстура для очистки базы данных
+-----------------------------------------------
+
+9| # Фикстура для очистки базы данных перед каждым тестом
+10| @pytest.fixture(autouse=True)
+    Фикстура - это функция, которая выполняется автоматически перед каждым тестом.
+    autouse=True означает, что она будет запускаться автоматически для всех тестов
+
+11| def reset_db():
+12|     """Очищает базу данных перед каждым тестом"""
+13|     movies_db.clear()
+    Очищаем список фильмов перед началом теста
+
+14|     yield
+    yield разделяет код на две части:
+    - код до yield выполняется ПЕРЕД тестом
+    - код после yield выполняется ПОСЛЕ теста
+
+15|     movies_db.clear()
+    Очищаем список фильмов после завершения теста
+
+   Зачем это нужно? Чтобы каждый тест начинался с чистой базы данных и не
+   зависел от результатов предыдущих тестов.
+
+
+СТРОКИ 18-52: Тесты модели Movie
+----------------------------------
+
+18| class TestMovieModel:
+    Класс для группировки тестов, связанных с моделью Movie
+
+21|     def test_movie_creation_without_id(self):
+    Тест создания фильма БЕЗ указания ID. Должен автоматически генерироваться UUID
+
+23-28|         movie = Movie(
+                title="Test Movie",
+                genre="Action",
+                year=2023,
+                rating=8
+            )
+    Создаем объект Movie без указания id
+
+29|         assert movie.id is not None
+    Проверяем, что id был создан (не None)
+
+30|         assert isinstance(movie.id, str)
+    Проверяем, что id - это строка
+
+32|         uuid.UUID(movie.id)
+    Пытаемся создать UUID объект из строки. Если строка не является валидным
+    UUID, будет выброшено исключение и тест провалится
+
+33|         assert movie.title == "Test Movie"
+    Проверяем, что название фильма установлено правильно
+
+34|         assert movie.created_at is not None
+    Проверяем, что дата создания установлена
+
+36|     def test_movie_creation_with_id(self):
+    Тест создания фильма С указанием собственного ID
+
+38|         custom_id = str(uuid.uuid4())
+    Генерируем случайный UUID и преобразуем в строку
+
+39-45|         movie = Movie(
+                id=custom_id,
+                title="Test Movie",
+                genre="Action",
+                year=2023,
+                rating=8
+            )
+    Создаем фильм с указанным id
+
+46|         assert movie.id == custom_id
+    Проверяем, что использовался именно тот id, который мы указали
+
+48|     def test_unique_uuid_generation(self):
+    Тест проверяет, что каждый фильм получает УНИКАЛЬНЫЙ UUID
+
+50-51|         movie1 = Movie(title="Movie 1", genre="Action", year=2023, rating=8)
+          movie2 = Movie(title="Movie 2", genre="Comedy", year=2023, rating=7)
+    Создаем два фильма
+
+52|         assert movie1.id != movie2.id
+    Проверяем, что их ID разные
+
+
+СТРОКИ 55-91: Тесты создания фильмов через API
+------------------------------------------------
+
+55| class TestAPICreateMovie:
+    Класс для тестов создания фильмов через HTTP API
+
+58|     def test_create_movie_via_api(self):
+    Тест создания фильма через POST запрос к /api/movies/
+
+60-66|         movie_data = {
+                "title": "Inception",
+                "genre": "Sci-Fi",
+                "year": 2010,
+                "rating": 9,
+                "is_avaible": True
+            }
+    Подготавливаем данные фильма в формате словаря (JSON)
+
+67|         response = client.post("/api/movies/", json=movie_data)
+    Отправляем POST запрос на создание фильма
+    json=movie_data означает, что данные отправляются в формате JSON
+
+68|         assert response.status_code == 200
+    Проверяем, что сервер вернул код 200 (успех)
+
+69|         data = response.json()
+    Преобразуем ответ сервера из JSON в словарь Python
+
+70-74|         assert data["title"] == "Inception"
+          assert data["genre"] == "Sci-Fi"
+          assert data["year"] == 2010
+          assert data["rating"] == 9
+    Проверяем, что все поля фильма установлены правильно
+
+75|         assert "id" in data
+    Проверяем, что в ответе есть поле id
+
+76|         assert "created_at" in data
+    Проверяем, что в ответе есть поле created_at (дата создания)
+
+77|         assert len(movies_db) == 1
+    Проверяем, что фильм действительно добавился в базу данных
+
+79|     def test_create_movie_without_id(self):
+    Тест создания фильма без указания id в запросе
+
+81-86|         movie_data = {
+                "title": "The Matrix",
+                "genre": "Sci-Fi",
+                "year": 1999,
+                "rating": 8
+            }
+    Данные без поля id
+
+87|         response = client.post("/api/movies/", json=movie_data)
+    Отправляем запрос
+
+88|         assert response.status_code == 200
+    Проверяем успешность
+
+89|         data = response.json()
+    Получаем ответ
+
+90|         assert data["id"] is not None
+    Проверяем, что id был сгенерирован автоматически
+
+91|         uuid.UUID(data["id"])
+    Проверяем, что id является валидным UUID
+
+
+СТРОКИ 94-130: Тесты чтения фильмов
+------------------------------------
+
+94| class TestAPIReadMovies:
+    Класс для тестов чтения (получения) фильмов
+
+97|     def test_read_empty_movies_list(self):
+    Тест получения пустого списка фильмов
+
+99|         response = client.get("/movies/")
+    Отправляем GET запрос на получение списка фильмов
+
+100|         assert response.status_code == 200
+    Проверяем успешность
+
+101|         assert response.json() == []
+    Проверяем, что вернулся пустой список
+
+103|     def test_read_movies_list(self):
+    Тест получения списка с фильмами
+
+105-107|         movie1 = Movie(title="Movie 1", genre="Action", year=2023, rating=8)
+          movie2 = Movie(title="Movie 2", genre="Comedy", year=2023, rating=7)
+          movies_db.extend([movie1, movie2])
+    Добавляем два фильма напрямую в базу данных
+
+109|         response = client.get("/movies/")
+    Запрашиваем список
+
+110|         assert response.status_code == 200
+    Проверяем успех
+
+111|         data = response.json()
+    Получаем данные
+
+112|         assert len(data) == 2
+    Проверяем, что вернулось ровно 2 фильма
+
+114|     def test_read_movie_by_id(self):
+    Тест получения одного фильма по его ID
+
+116-117|         movie = Movie(title="Test Movie", genre="Action", year=2023, rating=8)
+          movies_db.append(movie)
+    Создаем и добавляем фильм
+
+119|         response = client.get(f"/movies/{movie.id}")
+    Запрашиваем фильм по его ID
+    f"/movies/{movie.id}" - f-строка, подставляет значение movie.id в строку
+
+120|         assert response.status_code == 200
+    Проверяем успех
+
+121|         data = response.json()
+    Получаем данные
+
+122-123|         assert data["id"] == movie.id
+          assert data["title"] == "Test Movie"
+    Проверяем, что вернулся правильный фильм
+
+125|     def test_read_nonexistent_movie(self):
+    Тест запроса несуществующего фильма
+
+127|         fake_id = str(uuid.uuid4())
+    Генерируем случайный UUID, которого точно нет в базе
+
+128|         response = client.get(f"/movies/{fake_id}")
+    Запрашиваем фильм с этим ID
+
+129|         assert response.status_code == 404
+    Проверяем, что сервер вернул код 404 (не найдено)
+
+130|         assert "not found" in response.json()["detail"].lower()
+    Проверяем, что в сообщении об ошибке есть текст "not found"
+
+
+СТРОКИ 133-196: Тесты обновления фильмов
+-----------------------------------------
+
+133| class TestAPIUpdateMovie:
+    Класс для тестов обновления фильмов
+
+136|     def test_update_movie_put(self):
+    Тест полного обновления фильма через PUT запрос
+    PUT - заменяет весь объект новыми данными
+
+138-139|         movie = Movie(title="Old Title", genre="Action", year=2020, rating=7)
+          movies_db.append(movie)
+    Создаем фильм для обновления
+
+141-147|         updated_data = {
+                "title": "New Title",
+                "genre": "Comedy",
+                "year": 2023,
+                "rating": 9,
+                "is_avaible": True
+            }
+    Подготавливаем новые данные для фильма
+
+148|         response = client.put(f"/movies/{movie.id}", json=updated_data)
+    Отправляем PUT запрос с новыми данными
+
+149|         assert response.status_code == 200
+    Проверяем успех
+
+150|         data = response.json()
+    Получаем обновленные данные
+
+151-154|         assert data["title"] == "New Title"
+          assert data["genre"] == "Comedy"
+          assert data["year"] == 2023
+          assert data["rating"] == 9
+    Проверяем, что все поля обновились
+
+156|     def test_update_nonexistent_movie_put(self):
+    Тест обновления несуществующего фильма
+
+158|         fake_id = str(uuid.uuid4())
+    Генерируем несуществующий ID
+
+159-164|         updated_data = {
+                "title": "New Title",
+                "genre": "Comedy",
+                "year": 2023,
+                "rating": 9
+            }
+    Подготавливаем данные
+
+165|         response = client.put(f"/movies/{fake_id}", json=updated_data)
+    Пытаемся обновить несуществующий фильм
+
+166|         assert response.status_code == 404
+    Проверяем, что получили ошибку 404
+
+168|     def test_patch_movie(self):
+    Тест частичного обновления через PATCH
+    PATCH - обновляет только указанные поля, остальные остаются без изменений
+
+170-172|         movie = Movie(title="Original", genre="Action", year=2020, rating=7)
+          movies_db.append(movie)
+          original_id = movie.id
+    Создаем фильм и сохраняем его ID
+
+174-178|         response = client.patch(
+                f"/movies/{movie.id}",
+                json={"title": "Updated Title", "rating": 9}
+            )
+    Отправляем PATCH запрос, обновляя только title и rating
+
+179|         # Проверяем, что endpoint отвечает успешно
+180|         assert response.status_code == 200
+    Проверяем успех
+
+181|         data = response.json()
+    Получаем данные
+
+182-187|         # Проверяем базовую структуру ответа
+          assert "id" in data
+          assert data["id"] == original_id
+          assert "title" in data
+          assert "genre" in data
+          assert "rating" in data
+    Проверяем, что в ответе есть все необходимые поля и ID не изменился
+
+188-190|         # Проверяем, что фильм существует в базе
+          assert len(movies_db) == 1
+          assert movies_db[0].id == original_id
+    Проверяем, что фильм остался в базе с тем же ID
+
+192|     def test_patch_nonexistent_movie(self):
+    Тест PATCH для несуществующего фильма
+
+194|         fake_id = str(uuid.uuid4())
+    Генерируем несуществующий ID
+
+195|         response = client.patch(f"/movies/{fake_id}", json={"title": "New"})
+    Пытаемся обновить несуществующий фильм
+
+196|         assert response.status_code == 404
+    Проверяем ошибку 404
+
+
+СТРОКИ 199-216: Тесты удаления фильмов
+---------------------------------------
+
+199| class TestAPIDeleteMovie:
+    Класс для тестов удаления фильмов
+
+202|     def test_delete_movie(self):
+    Тест удаления фильма через DELETE запрос
+
+204-205|         movie = Movie(title="To Delete", genre="Action", year=2023, rating=8)
+          movies_db.append(movie)
+    Создаем фильм для удаления
+
+207|         response = client.delete(f"/movies/{movie.id}")
+    Отправляем DELETE запрос
+
+208|         assert response.status_code == 200
+    Проверяем успех
+
+209|         assert response.json()["message"] == "movie deleted"
+    Проверяем сообщение об успешном удалении
+
+210|         assert len(movies_db) == 0
+    Проверяем, что фильм действительно удален из базы
+
+212|     def test_delete_nonexistent_movie(self):
+    Тест удаления несуществующего фильма
+
+214|         fake_id = str(uuid.uuid4())
+    Генерируем несуществующий ID
+
+215|         response = client.delete(f"/movies/{fake_id}")
+    Пытаемся удалить несуществующий фильм
+
+216|         assert response.status_code == 404
+    Проверяем ошибку 404
+
+
+СТРОКИ 219-265: Тесты поиска фильмов
+-------------------------------------
+
+219| class TestAPISearchMovie:
+    Класс для тестов поиска фильмов
+
+222|     def test_search_movie(self):
+    Тест поиска фильмов по названию
+
+224-228|         movies_db.extend([
+                Movie(title="The Matrix", genre="Sci-Fi", year=1999, rating=8),
+                Movie(title="Matrix Reloaded", genre="Sci-Fi", year=2003, rating=7),
+                Movie(title="Inception", genre="Sci-Fi", year=2010, rating=9)
+            ])
+    Добавляем три фильма, два из которых содержат слово "matrix" в названии
+
+230|         response = client.get("/movies/search/?query=matrix")
+    Отправляем GET запрос с параметром query=matrix
+    ?query=matrix - это query параметр в URL
+
+231|         assert response.status_code == 200
+    Проверяем успех
+
+232|         data = response.json()
+    Получаем результаты
+
+233|         assert len(data) == 2
+    Проверяем, что найдено ровно 2 фильма
+
+234|         assert all("matrix" in movie["title"].lower() for movie in data)
+    Проверяем, что во всех найденных фильмах есть слово "matrix" в названии
+    all() - проверяет, что все элементы списка соответствуют условию
+    movie["title"].lower() - преобразует название в нижний регистр
+
+236|     def test_search_movie_case_insensitive(self):
+    Тест поиска без учета регистра (большие/маленькие буквы)
+
+238-240|         movies_db.append(
+                Movie(title="The Matrix", genre="Sci-Fi", year=1999, rating=8)
+            )
+    Добавляем фильм с названием "The Matrix"
+
+242|         response = client.get("/movies/search/?query=MATRIX")
+    Ищем "MATRIX" (заглавными буквами)
+
+243|         assert response.status_code == 200
+    Проверяем успех
+
+244|         assert len(response.json()) == 1
+    Проверяем, что найден 1 фильм (поиск должен работать без учета регистра)
+
+246|     def test_search_movie_limit(self):
+    Тест ограничения количества результатов поиска
+
+248-251|         for i in range(15):
+                movies_db.append(
+                    Movie(title=f"Test Movie {i}", genre="Action", year=2023, rating=8)
+                )
+    Создаем 15 фильмов с названиями "Test Movie 0", "Test Movie 1", и т.д.
+
+253|         response = client.get("/movies/search/?query=test&limit=5")
+    Ищем "test" с ограничением в 5 результатов
+
+254|         assert response.status_code == 200
+    Проверяем успех
+
+255|         assert len(response.json()) == 5
+    Проверяем, что вернулось ровно 5 результатов
+
+257|     def test_search_no_results(self):
+    Тест поиска, когда ничего не найдено
+
+259-261|         movies_db.append(
+                Movie(title="Some Movie", genre="Action", year=2023, rating=8)
+            )
+    Добавляем фильм
+
+263|         response = client.get("/movies/search/?query=nonexistent")
+    Ищем несуществующее слово
+
+264|         assert response.status_code == 200
+    Проверяем успех (поиск не должен возвращать ошибку)
+
+265|         assert response.json() == []
+    Проверяем, что вернулся пустой список
+
+
+СТРОКИ 268-351: Тесты HTML маршрутов
+--------------------------------------
+
+268| class TestHTMLRoutes:
+    Класс для тестов HTML страниц и форм
+
+271|     def test_index_page(self):
+    Тест главной страницы (список всех фильмов)
+
+273-275|         movies_db.append(
+                Movie(title="Test Movie", genre="Action", year=2023, rating=8)
+            )
+    Добавляем фильм
+
+276|         response = client.get("/")
+    Запрашиваем главную страницу
+
+277|         assert response.status_code == 200
+    Проверяем успех
+
+278|         assert "text/html" in response.headers["content-type"]
+    Проверяем, что сервер вернул HTML страницу
+    response.headers["content-type"] - заголовок HTTP ответа, указывающий тип данных
+
+280|     def test_create_page(self):
+    Тест страницы создания фильма
+
+282|         response = client.get("/create")
+    Запрашиваем страницу создания
+
+283|         assert response.status_code == 200
+    Проверяем успех
+
+284|         assert "text/html" in response.headers["content-type"]
+    Проверяем, что это HTML
+
+286|     def test_create_movie_form(self):
+    Тест создания фильма через HTML форму
+
+288-297|         response = client.post(
+                "/create",
+                data={
+                    "title": "Form Movie",
+                    "genre": "Action",
+                    "year": 2023,
+                    "rating": 8,
+                    "is_avaible": True
+                },
+                follow_redirects=False
+            )
+    Отправляем POST запрос с данными формы
+    data= - данные формы (не JSON!)
+    follow_redirects=False - не следовать автоматическим перенаправлениям
+
+298|         assert response.status_code == 303
+    Проверяем код 303 (See Other) - это код перенаправления после успешной отправки формы
+
+299|         assert len(movies_db) == 1
+    Проверяем, что фильм добавился
+
+300-301|         assert movies_db[0].title == "Form Movie"
+          assert movies_db[0].id is not None
+    Проверяем данные фильма
+
+304|     def test_edit_page(self):
+    Тест страницы редактирования фильма
+
+306-307|         movie = Movie(title="To Edit", genre="Action", year=2023, rating=8)
+          movies_db.append(movie)
+    Создаем фильм для редактирования
+
+309|         response = client.get(f"/edit/{movie.id}")
+    Запрашиваем страницу редактирования
+
+310|         assert response.status_code == 200
+    Проверяем успех
+
+311|         assert "text/html" in response.headers["content-type"]
+    Проверяем HTML
+
+313|     def test_edit_nonexistent_movie_page(self):
+    Тест страницы редактирования несуществующего фильма
+
+315|         fake_id = str(uuid.uuid4())
+    Генерируем несуществующий ID
+
+316|         response = client.get(f"/edit/{fake_id}")
+    Запрашиваем страницу редактирования
+
+317|         assert response.status_code == 404
+    Проверяем ошибку 404
+
+319|     def test_edit_movie_form(self):
+    Тест редактирования фильма через форму
+
+321-322|         movie = Movie(title="Original", genre="Action", year=2020, rating=7)
+          movies_db.append(movie)
+    Создаем фильм
+
+324-333|         response = client.post(
+                f"/edit/{movie.id}",
+                data={
+                    "title": "Updated",
+                    "genre": "Comedy",
+                    "year": 2023,
+                    "rating": 9,
+                    "is_avaible": True
+                },
+                follow_redirects=False
+            )
+    Отправляем POST запрос с обновленными данными
+
+335|         assert response.status_code == 303
+    Проверяем перенаправление
+
+336-337|         assert movies_db[0].title == "Updated"
+          assert movies_db[0].genre == "Comedy"
+    Проверяем, что данные обновились в базе
+
+339|     def test_delete_movie_form(self):
+    Тест удаления фильма через форму (GET запрос на /delete/{id})
+
+341-343|         movie = Movie(title="To Delete", genre="Action", year=2023, rating=8)
+          movies_db.append(movie)
+          movie_id = movie.id
+    Создаем фильм и сохраняем его ID
+
+345-347|         # Выполняем удаление через форму
+          response = client.get(f"/delete/{movie_id}", follow_redirects=False)
+          assert response.status_code == 303
+    Отправляем GET запрос на удаление и проверяем перенаправление
+
+349-351|         # Проверяем, что фильм удален через API endpoint
+          api_response = client.get(f"/movies/{movie_id}")
+          assert api_response.status_code == 404
+    Проверяем через API, что фильм действительно удален (должна быть ошибка 404)
+
+
+================================================================================
+                            КАК ЗАПУСТИТЬ ТЕСТЫ
+================================================================================
+
+1. Убедитесь, что активировано виртуальное окружение:
+   source venv/bin/activate
+
+2. Запустите все тесты:
+   pytest test_main.py -v
+
+3. Запустите конкретный тест:
+   pytest test_main.py::TestMovieModel::test_movie_creation_without_id -v
+
+4. Запустите тесты с подробным выводом:
+   pytest test_main.py -v -s
+
+5. Запустите тесты и покажите покрытие кода:
+   pytest test_main.py --cov=main
+
+================================================================================
+                            СТАТИСТИКА ТЕСТОВ
+================================================================================
+
+Всего тестов: 26
+- Тесты модели Movie: 3
+- Тесты создания фильмов: 2
+- Тесты чтения фильмов: 4
+- Тесты обновления фильмов: 4
+- Тесты удаления фильмов: 2
+- Тесты поиска фильмов: 4
+- Тесты HTML маршрутов: 7
+
+Все тесты проходят успешно! ✅
+

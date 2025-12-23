@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Каталог фильмов</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 Каталог фильмов</h1>
+            <a href="/create" class="btn btn-primary">Добавить фильм</a>
+        </header>
+
+        {% if movies %}
+        <div class="movies-grid">
+            {% for movie in movies %}
+            <div class="movie-card">
+                <div class="movie-header">
+                    <h2>{{ movie.title }}</h2>
+                    <span class="badge {% if movie.is_avaible %}badge-success{% else %}badge-danger{% endif %}">
+                        {% if movie.is_avaible %}Доступен{% else %}Недоступен{% endif %}
+                    </span>
+                </div>
+                <div class="movie-info">
+                    <p><strong>Жанр:</strong> {{ movie.genre }}</p>
+                    <p><strong>Год:</strong> {{ movie.year }}</p>
+                    <p><strong>Рейтинг:</strong> 
+                        <span class="rating">
+                            {% for i in range(movie.rating) %}⭐{% endfor %}
+                        </span>
+                        ({{ movie.rating }}/10)
+                    </p>
+                    <p><strong>Добавлен:</strong> {{ movie.created_at.strftime('%d.%m.%Y %H:%M') }}</p>
+                </div>
+                <div class="movie-actions">
+                    <a href="/edit/{{ movie.id }}" class="btn btn-secondary">Редактировать</a>
+                    <a href="/delete/{{ movie.id }}" class="btn btn-danger" onclick="return confirm('Вы уверены, что хотите удалить этот фильм?')">Удалить</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>Пока нет фильмов в каталоге.</p>
+            <a href="/create" class="btn btn-primary">Добавить первый фильм</a>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
